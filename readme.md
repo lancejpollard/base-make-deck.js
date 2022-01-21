@@ -6,11 +6,11 @@ The input format is like this:
 ```json
 {
   "basePath": "..",
-  "load": [
+  "list": [
     { "filePath": "../test/dock/browser", "fileType": "test" },
     { "filePath": "../test/view/example", "fileType": "view" },
   ],
-  "lead": "../test/dock/browser"
+  "leadPath": "../test/dock/browser"
 }
 ```
 
