@@ -24,15 +24,15 @@ The output format is a `deck` which looks like this:
       "filePath": "./relative/path/test/dock/browser/base.link",
       "fileType": "test",
       "text": "...content...",
-      "tree": [{...}],
-      "...": {...}
+      "tree": ["{...}"],
+      "...": "{...}"
     },
     "@myorg/mydeck/test/view/example": {
       "filePath": "./relative/path/test/view/example/base.link",
       "fileType": "test",
       "text": "...content...",
-      "tree": [{...}],
-      "...": {...}
+      "tree": ["{...}"],
+      "...": "{...}"
     }
   },
   "lead": "@myorg/mydeck/test/dock/browser"
