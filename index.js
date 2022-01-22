@@ -25,12 +25,12 @@ function load(configPath) {
     lead: null,
   }
 
-  deck.basePath = pathResolver.join(configDirectory, config.basePath)
+  const basePath = pathResolver.join(configDirectory, config.basePath)
 
   const { filePath: leadPath } = resolvePath({
     host: deck.host,
     site: deck.site,
-    basePath: deck.basePath,
+    basePath: basePath,
     filePath: config.leadPath
   })
 
@@ -38,24 +38,29 @@ function load(configPath) {
     const file = {
       filePath: null,
       fileType: fileConfig.fileType,
+      road: null,
       lead: null,
+      host: null,
       text: null,
       tree: null
     }
 
     const {
       filePath,
-      loadPath
+      loadPath,
+      isDirectory,
     } = resolvePath({
       host: deck.host,
       site: deck.site,
-      basePath: deck.basePath,
+      basePath: basePath,
       filePath: fileConfig.filePath
     })
 
-    file.filePath = filePath
-    file.lead = file.filePath === leadPath
-    file.text = read(file.filePath)
+    file.filePath = pathResolver.relative(basePath, filePath)
+    file.road = loadPath
+    file.lead = filePath === leadPath
+    file.host = isDirectory
+    file.text = read(filePath)
     file.tree = parseTextIntoTree(file.text)
 
     if (file.lead) {
@@ -73,6 +78,13 @@ function load(configPath) {
     }
   })
 
+  deck.basePath = pathResolver.relative(process.cwd(), basePath)
+
+  Object.keys(deck.load).forEach(loadPath => {
+    const file = deck.load[loadPath]
+    resolveImportDependencies(deck, loadPath, file)
+  })
+
   return deck
 }
 
@@ -85,7 +97,7 @@ function resolvePath({ host, site, basePath, filePath }) {
     givenPath
   )
 
-  const loadPath = `@${host}/${site}/${relativePath}`
+  const loadPath = `@${host}/${site}/${relativePath}`.replace(/\/$/, '')
 
   while (true) {
     const fileName = pathResolver.basename(potentialPath)
@@ -99,6 +111,7 @@ function resolvePath({ host, site, basePath, filePath }) {
         } else {
           return {
             filePath: potentialPath,
+            isDirectory: false,
             loadPath
           }
         }
@@ -112,9 +125,45 @@ function resolvePath({ host, site, basePath, filePath }) {
     } else {
       return {
         filePath: potentialPath,
+        isDirectory: true,
         loadPath
       }
     }
+  }
+}
+
+function resolveImportDependencies(deck, road, file, list = []) {
+  if (file.load) {
+    file.load.forEach(load => {
+      resolveImportDependenciesRoad(deck, road, load, list)
+    })
+  }
+  file.load = list
+}
+
+function resolveImportDependenciesRoad(deck, baseRoad, load, list) {
+  if (load.road.startsWith('@')) {
+    if (load.take.length) {
+      list.push({ road: load.road, take: load.take })
+    }
+    const road = load.road
+    let file = deck.load[road]
+    let directory = file.host ? road : pathResolver.dirname(road)
+    load.load.forEach(load => {
+      resolveImportDependenciesRoad(deck, directory, load, list)
+    })
+  } else {
+    let baseFile = deck.load[baseRoad]
+    let baseDirectory = baseFile.host ? baseRoad : pathResolver.dirname(baseRoad)
+    let road = pathResolver.join(baseDirectory, load.road)
+    if (load.take.length) {
+      list.push({ road, take: load.take })
+    }
+    let file = deck.load[road]
+    let directory = file.host ? road : pathResolver.dirname(road)
+    load.load.forEach(load => {
+      resolveImportDependenciesRoad(deck, directory, load, list)
+    })
   }
 }
 
