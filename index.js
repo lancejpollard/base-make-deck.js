@@ -15,70 +15,86 @@ module.exports = load
 
 function load(configPath) {
   const configDirectory = pathResolver.resolve(pathResolver.dirname(configPath))
-  const config = JSON.parse(read(configPath))
+  const configArray = JSON.parse(read(configPath))
 
-  const deck = {
-    host: config.host,
-    site: config.site,
-    basePath: null,
-    load: {},
-    lead: null,
-  }
-
-  const basePath = pathResolver.join(configDirectory, config.basePath)
-
-  const { filePath: leadPath } = resolvePath({
-    host: deck.host,
-    site: deck.site,
-    basePath: basePath,
-    filePath: config.leadPath
-  })
-
-  config.list.forEach(fileConfig => {
-    const file = {
-      filePath: null,
-      fileType: fileConfig.fileType,
-      road: null,
+  const deck = configArray.reduce((mainDeck, config) => {
+    const deck = {
+      host: config.host,
+      site: config.site,
+      basePath: null,
+      load: {},
       lead: null,
-      host: null,
-      text: null,
-      tree: null
     }
 
-    const {
-      filePath,
-      loadPath,
-      isDirectory,
-    } = resolvePath({
+    const basePath = pathResolver.join(configDirectory, config.basePath)
+
+    const { filePath: leadPath } = config.leadPath ? resolvePath({
       host: deck.host,
       site: deck.site,
       basePath: basePath,
-      filePath: fileConfig.filePath
+      filePath: config.leadPath
+    }) : { }
+
+    config.list.forEach(fileConfig => {
+      const file = {
+        filePath: null,
+        fileType: fileConfig.fileType,
+        road: null,
+        lead: null,
+        host: null,
+        text: null,
+        tree: null
+      }
+
+      const {
+        filePath,
+        loadPath,
+        isDirectory,
+      } = resolvePath({
+        host: deck.host,
+        site: deck.site,
+        basePath: basePath,
+        filePath: fileConfig.filePath
+      })
+
+      file.filePath = pathResolver.relative(basePath, filePath)
+      file.road = loadPath
+      file.lead = filePath === leadPath
+      file.host = isDirectory
+      file.text = read(filePath)
+      file.tree = parseTextIntoTree(file.text)
+
+      if (file.lead) {
+        deck.lead = loadPath
+      }
+
+      console.log(filePath)
+
+      const object = buildFile({
+        tree: file.tree,
+        type: file.fileType
+      })
+
+      deck.load[loadPath] = {
+        ...file,
+        ...object,
+      }
     })
 
-    file.filePath = pathResolver.relative(basePath, filePath)
-    file.road = loadPath
-    file.lead = filePath === leadPath
-    file.host = isDirectory
-    file.text = read(filePath)
-    file.tree = parseTextIntoTree(file.text)
+    deck.basePath = pathResolver.relative(process.cwd(), basePath)
 
-    if (file.lead) {
-      deck.lead = loadPath
+    mainDeck.load = {
+      ...mainDeck.load,
+      ...deck.load,
     }
 
-    const object = buildFile({
-      tree: file.tree,
-      type: file.fileType
-    })
-
-    deck.load[loadPath] = {
-      ...file,
-      ...object,
+    if (leadPath) {
+      mainDeck.leadPath = leadPath
+      mainDeck.lead = deck.lead
     }
-  })
 
-  deck.basePath = pathResolver.relative(process.cwd(), basePath)
+    return mainDeck
+  }, {})
 
   Object.keys(deck.load).forEach(loadPath => {
     const file = deck.load[loadPath]
@@ -133,36 +149,49 @@ function resolvePath({ host, site, basePath, filePath }) {
 }
 
 function resolveImportDependencies(deck, road, file, list = []) {
+  file.name = {}
   if (file.load) {
     file.load.forEach(load => {
-      resolveImportDependenciesRoad(deck, road, load, list)
+      resolveImportDependenciesRoad(file.name, deck, road, load, list)
     })
   }
   file.load = list
 }
 
-function resolveImportDependenciesRoad(deck, baseRoad, load, list) {
+function resolveImportDependenciesRoad(name, deck, baseRoad, load, list) {
   if (load.road.startsWith('@')) {
     if (load.take.length) {
-      list.push({ road: load.road, take: load.take })
+      const childLoad = { road: load.road, take: load.take }
+      list.push(childLoad)
+      childLoad.take.forEach(take => {
+        const hostName = name[take.host] = name[take.host] ?? {}
+        hostName[take.base] = childLoad.road
+      })
     }
     const road = load.road
     let file = deck.load[road]
+    if (!file) throw new Error(`File ${road} not found`)
     let directory = file.host ? road : pathResolver.dirname(road)
     load.load.forEach(load => {
-      resolveImportDependenciesRoad(deck, directory, load, list)
+      resolveImportDependenciesRoad(name, deck, directory, load, list)
     })
   } else {
     let baseFile = deck.load[baseRoad]
     let baseDirectory = baseFile.host ? baseRoad : pathResolver.dirname(baseRoad)
     let road = pathResolver.join(baseDirectory, load.road)
     if (load.take.length) {
-      list.push({ road, take: load.take })
+      const childLoad = { road, take: load.take }
+      list.push(childLoad)
+      childLoad.take.forEach(take => {
+        const hostName = name[take.host] = name[take.host] ?? {}
+        hostName[take.base] = childLoad.road
+      })
     }
     let file = deck.load[road]
+    if (!file) throw new Error(`File ${road} not found in ${baseRoad}`)
     let directory = file.host ? road : pathResolver.dirname(road)
     load.load.forEach(load => {
-      resolveImportDependenciesRoad(deck, directory, load, list)
+      resolveImportDependenciesRoad(name, deck, directory, load, list)
     })
   }
 }
